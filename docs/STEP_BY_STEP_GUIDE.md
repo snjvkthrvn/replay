@@ -101,8 +101,8 @@ Verify: `npx prisma studio` opens database GUI at http://localhost:5555
 ```bash
 npm install bull @types/bull ioredis       # Job queue
 npm install socket.io                       # WebSocket
-npm install firebase-admin                  # Push notifications
-npm install node-cron @types/node-cron      # Cron scheduling
+npm install google-auth-library             # FCM HTTP v1 auth
+npm install node-cron                       # Cron scheduling
 ```
 
 ---
@@ -668,26 +668,39 @@ Register: `app.use('/replays', replayRoutes);`
 
 Create `src/services/pushNotifications.ts`:
 ```typescript
-import admin from 'firebase-admin';
-import { PrismaClient } from '@prisma/client';
-import path from 'path';
+import { GoogleAuth } from 'google-auth-library';
+import prisma from './prisma';
 
-const prisma = new PrismaClient();
-
-// Initialize Firebase (place service account JSON in backend root)
-const serviceAccount = require(path.join(__dirname, '../../firebase-service-account.json'));
-admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+const FCM_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON;
+const serviceAccount = serviceAccountJson ? JSON.parse(serviceAccountJson) : null;
+const auth = serviceAccount ? new GoogleAuth({ credentials: serviceAccount, scopes: [FCM_SCOPE] }) : null;
+const projectId = serviceAccount?.project_id;
 
 export async function sendPushNotification(userId: string, payload: { title: string; body: string; data?: Record<string, string> }) {
+  if (!auth || !projectId) return;
   const tokens = await prisma.deviceToken.findMany({ where: { userId } });
   if (tokens.length === 0) return;
 
-  await admin.messaging().sendEachForMulticast({
-    tokens: tokens.map(t => t.fcmToken),
-    notification: { title: payload.title, body: payload.body },
-    data: payload.data,
-    apns: { payload: { aps: { sound: 'default' } } },
-  });
+  const client = await auth.getClient();
+  const tokenResponse = await client.getAccessToken();
+  const accessToken = typeof tokenResponse === 'string' ? tokenResponse : tokenResponse?.token;
+  if (!accessToken) return;
+
+  await Promise.all(tokens.map((token) => fetch(
+    `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: {
+          token: token.fcmToken,
+          notification: { title: payload.title, body: payload.body },
+          data: payload.data,
+        },
+      }),
+    },
+  )));
 }
 ```
 
@@ -982,11 +995,26 @@ Create `src/websocket/index.ts`:
 import { Server } from 'socket.io';
 import { Server as HTTPServer } from 'http';
 import { verifyToken } from '../services/auth';
+import { hasUnlockedSegment } from '../services/accessControl';
+import { feedRoom } from './rooms';
 
 let ioInstance: Server;
 
 export function setupWebSocket(httpServer: HTTPServer) {
-  const io = new Server(httpServer, { cors: { origin: '*' } });
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8081')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+
+  const io = new Server(httpServer, {
+    cors: {
+      origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) callback(null, true);
+        else callback(new Error(`CORS blocked: ${origin}`));
+      },
+      credentials: true,
+    },
+  });
 
   io.use((socket, next) => {
     try {
@@ -1000,8 +1028,11 @@ export function setupWebSocket(httpServer: HTTPServer) {
 
   io.on('connection', (socket) => {
     socket.join(`user:${socket.data.userId}`);
-    socket.on('join_feed', ({ segment, date }) => socket.join(`feed:${segment}:${date}`));
-    socket.on('leave_feed', ({ segment, date }) => socket.leave(`feed:${segment}:${date}`));
+    socket.on('join_feed', async ({ segment, date }) => {
+      const unlocked = await hasUnlockedSegment(socket.data.userId, segment, new Date(`${date}T00:00:00.000Z`));
+      if (unlocked) socket.join(feedRoom(socket.data.userId, segment, date));
+    });
+    socket.on('leave_feed', ({ segment, date }) => socket.leave(feedRoom(socket.data.userId, segment, date)));
   });
 
   ioInstance = io;
@@ -1479,7 +1510,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
 
 router.post('/:id/export', authenticate, async (req: AuthRequest, res) => {
   if (req.body.platform !== 'SPOTIFY') return res.status(400).json({ error: 'Only Spotify supported' });
-  res.json(await exportToSpotify(req.params.id));
+  res.json(await exportToSpotify(req.user!.userId, req.params.id));
 });
 
 export default router;

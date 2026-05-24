@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import prisma from '../services/prisma';
+import { withLeaderLock } from '../services/leaderLock';
 
 const MIN_ATTEMPTS = 4;
 const BADGE_THRESHOLD = 0.8;
@@ -81,7 +82,12 @@ async function calculateCuratorBadges() {
 
 // Daily at 5am
 cron.schedule('0 5 * * *', async () => {
-  await calculateCuratorBadges();
+  const ran = await withLeaderLock('curator-badge-daily', async () => {
+    await calculateCuratorBadges();
+  }, 30 * 60); // 30-minute lock; user iteration can take a while at scale
+  if (ran === null) {
+    console.log('Curator badge calculation skipped (another worker holds the lock)');
+  }
 });
 
 console.log('Curator badge cron registered (5am daily)');

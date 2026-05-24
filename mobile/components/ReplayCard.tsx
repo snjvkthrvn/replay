@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { colors, spacing, radius, typography } from '../constants/theme';
+import { AlbumArt } from './ReplayVisuals';
 
 interface ReplayCardProps {
   replay: {
@@ -19,6 +21,7 @@ interface ReplayCardProps {
     commentCount: number;
   };
   onPress?: () => void;
+  variant?: 'stack' | 'mosaic' | 'grid';
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; icon: string }> = {
@@ -28,7 +31,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   MISSED: { label: 'Missed', color: colors.missed, bg: colors.missedBg, icon: 'close-circle' },
 };
 
-export default function ReplayCard({ replay, onPress }: ReplayCardProps) {
+export default function ReplayCard({ replay, onPress, variant = 'stack' }: ReplayCardProps) {
   const router = useRouter();
   const status = STATUS_CONFIG[replay.status];
   const handlePress = onPress || (() => router.push(`/replay/${replay.id}`));
@@ -36,6 +39,63 @@ export default function ReplayCard({ replay, onPress }: ReplayCardProps) {
     hour: '2-digit',
     minute: '2-digit',
   });
+  const seed = `${replay.id}-${replay.trackName}-${replay.artistName}`;
+
+  if (variant === 'mosaic' || variant === 'grid') {
+    const compact = variant === 'grid';
+    return (
+      <TouchableOpacity
+        style={[styles.tile, compact && styles.gridTile]}
+        onPress={handlePress}
+        activeOpacity={0.82}
+      >
+        <AlbumArt
+          url={replay.albumArtUrl}
+          seed={seed}
+          size="100%"
+          borderRadius={compact ? radius.md : radius.lg}
+          style={styles.tileArt}
+        />
+        <LinearGradient
+          colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.18)', 'rgba(0,0,0,0.9)']}
+          locations={[0, 0.44, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.tileStatusRow}>
+          <View
+            style={[
+              styles.statusDot,
+              { backgroundColor: status?.color || colors.textTertiary },
+            ]}
+          />
+          {!compact && <Text style={styles.tileTime}>{captureTime.replace(/\s[AP]M/, '')}</Text>}
+        </View>
+        {replay.reRollsUsed > 0 && !compact && (
+          <View style={styles.tileReroll}>
+            <Ionicons name="refresh" size={10} color={colors.late} />
+            <Text style={styles.tileRerollText}>{replay.reRollsUsed}</Text>
+          </View>
+        )}
+        <View style={styles.tileCopy}>
+          {replay.user && (
+            <Text style={styles.tileUser} numberOfLines={1}>
+              {replay.user.displayName}
+            </Text>
+          )}
+          {!compact && (
+            <>
+              <Text style={styles.tileTrack} numberOfLines={1}>
+                {replay.trackName}
+              </Text>
+              <Text style={styles.tileArtist} numberOfLines={1}>
+                {replay.artistName}
+              </Text>
+            </>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  }
 
   return (
     <TouchableOpacity
@@ -43,14 +103,7 @@ export default function ReplayCard({ replay, onPress }: ReplayCardProps) {
       onPress={handlePress}
       activeOpacity={0.7}
     >
-      {/* Album art */}
-      {replay.albumArtUrl ? (
-        <Image source={{ uri: replay.albumArtUrl }} style={styles.albumArt} />
-      ) : (
-        <View style={[styles.albumArt, styles.placeholder]}>
-          <Ionicons name="musical-notes" size={24} color={colors.accent} />
-        </View>
-      )}
+      <AlbumArt url={replay.albumArtUrl} seed={seed} size={72} borderRadius={radius.md} />
 
       {/* Info */}
       <View style={styles.info}>
@@ -78,7 +131,7 @@ export default function ReplayCard({ replay, onPress }: ReplayCardProps) {
 
           {replay.reRollsUsed > 0 && (
             <View style={styles.rerolledPill}>
-              <Ionicons name="shuffle" size={10} color={colors.late} />
+              <Ionicons name="refresh" size={10} color={colors.late} />
             </View>
           )}
         </View>
@@ -112,18 +165,6 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     backgroundColor: colors.card,
     borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  albumArt: {
-    width: 68,
-    height: 68,
-    borderRadius: radius.md,
-  },
-  placeholder: {
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
     borderWidth: 1,
     borderColor: colors.cardBorder,
   },
@@ -189,5 +230,83 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: colors.textTertiary,
     fontWeight: '600',
+  },
+  tile: {
+    flex: 1,
+    aspectRatio: 1,
+    borderRadius: radius.lg,
+    overflow: 'hidden',
+    margin: spacing.xs,
+    backgroundColor: colors.card,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.cardBorder,
+  },
+  gridTile: {
+    borderRadius: radius.md,
+    margin: 3,
+  },
+  tileArt: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  tileStatusRow: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 4,
+  },
+  tileTime: {
+    color: 'rgba(255,255,255,0.78)',
+    fontSize: 9,
+    fontWeight: '700',
+    letterSpacing: 0.4,
+  },
+  tileReroll: {
+    position: 'absolute',
+    top: 9,
+    right: 9,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    backgroundColor: 'rgba(0,0,0,0.46)',
+    paddingHorizontal: 6,
+    paddingVertical: 3,
+    borderRadius: radius.full,
+  },
+  tileRerollText: {
+    color: colors.late,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+  tileCopy: {
+    position: 'absolute',
+    left: 11,
+    right: 11,
+    bottom: 10,
+  },
+  tileUser: {
+    color: colors.accentLight,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+    textTransform: 'uppercase',
+    marginBottom: 3,
+  },
+  tileTrack: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+  tileArtist: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: 11,
+    marginTop: 1,
   },
 });

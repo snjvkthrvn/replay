@@ -24,8 +24,9 @@ export default function ProfileScreen() {
       if (result.type === 'success' && result.url) {
         const url = new URL(result.url);
         const code = url.searchParams.get('code');
-        if (code) {
-          await spotifyCallback(code);
+        const state = url.searchParams.get('state');
+        if (code && state) {
+          await spotifyCallback(code, state);
           qc.invalidateQueries({ queryKey: ['me'] });
         }
       }

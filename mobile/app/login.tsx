@@ -10,13 +10,16 @@ import {
   Platform,
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { useRouter } from 'expo-router';
 import { colors, spacing, radius, typography, gradients } from '../constants/theme';
+import { WaveformBars } from '../components/ReplayVisuals';
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
@@ -37,14 +40,20 @@ export default function LoginScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Decorative glow */}
       <View style={styles.glowOrb} />
+      <View style={styles.glowOrbSecondary} />
+      <View style={styles.scanline} />
 
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.content}
       >
         <View style={styles.brandingSection}>
+          <View style={styles.logoBars}>
+            {[16, 22, 14, 20, 18, 12, 24, 10].map((height, i) => (
+              <View key={i} style={[styles.logoBar, { height }]} />
+            ))}
+          </View>
           <Text style={styles.logo}>replay</Text>
           <Text style={styles.tagline}>your music, unfiltered</Text>
         </View>
@@ -65,14 +74,26 @@ export default function LoginScreen() {
 
           <View style={styles.inputWrapper}>
             <Text style={styles.inputLabel}>PASSWORD</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter password"
-              placeholderTextColor={colors.textTertiary}
-              value={password}
-              onChangeText={setPassword}
-              secureTextEntry
-            />
+            <View style={styles.passwordContainer}>
+              <TextInput
+                style={styles.passwordInput}
+                placeholder="Enter password"
+                placeholderTextColor={colors.textTertiary}
+                value={password}
+                onChangeText={setPassword}
+                secureTextEntry={!showPassword}
+              />
+              <TouchableOpacity
+                onPress={() => setShowPassword(!showPassword)}
+                style={styles.eyeButton}
+              >
+                <Ionicons
+                  name={showPassword ? 'eye-off-outline' : 'eye-outline'}
+                  size={20}
+                  color={colors.textTertiary}
+                />
+              </TouchableOpacity>
+            </View>
           </View>
 
           {error ? (
@@ -110,6 +131,11 @@ export default function LoginScreen() {
             </Text>
           </TouchableOpacity>
         </View>
+
+        <View style={styles.captureRhythm}>
+          <WaveformBars color={colors.accent} active count={16} height={18} />
+          <Text style={styles.captureRhythmText}>CAPTURES 4x DAILY</Text>
+        </View>
       </KeyboardAvoidingView>
     </View>
   );
@@ -129,6 +155,24 @@ const styles = StyleSheet.create({
     borderRadius: 150,
     backgroundColor: colors.accentGlow,
   },
+  glowOrbSecondary: {
+    position: 'absolute',
+    bottom: 80,
+    left: -90,
+    width: 220,
+    height: 220,
+    borderRadius: 110,
+    backgroundColor: colors.accentGlow,
+    opacity: 0.6,
+  },
+  scanline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    top: '18%',
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(200,149,108,0.25)',
+  },
   content: {
     flex: 1,
     justifyContent: 'center',
@@ -137,9 +181,21 @@ const styles = StyleSheet.create({
   brandingSection: {
     marginBottom: spacing.massive,
   },
+  logoBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 3,
+    height: 26,
+    marginBottom: spacing.md,
+  },
+  logoBar: {
+    width: 3,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
+  },
   logo: {
     ...typography.hero,
-    color: colors.accent,
+    color: colors.text,
     marginBottom: spacing.sm,
   },
   tagline: {
@@ -163,6 +219,24 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     fontSize: 16,
     color: colors.text,
+  },
+  passwordContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    borderRadius: radius.md,
+  },
+  passwordInput: {
+    flex: 1,
+    padding: spacing.lg,
+    fontSize: 16,
+    color: colors.text,
+  },
+  eyeButton: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
   },
   errorContainer: {
     backgroundColor: colors.missedBg,
@@ -202,5 +276,17 @@ const styles = StyleSheet.create({
   linkAccent: {
     color: colors.accent,
     fontWeight: '600',
+  },
+  captureRhythm: {
+    alignItems: 'center',
+    marginTop: spacing.massive,
+    opacity: 0.62,
+  },
+  captureRhythmText: {
+    marginTop: spacing.sm,
+    color: colors.textTertiary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
 });

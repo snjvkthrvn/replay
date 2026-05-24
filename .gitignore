@@ -1,4 +1,9 @@
 .DS_Store
+.antigravitycli/
+*.pem
+npm-cache/
+backend/npm-cache/
+mobile/npm-cache/
 node_modules/
 dist/
 .env

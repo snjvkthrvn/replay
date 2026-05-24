@@ -9,7 +9,13 @@ export async function executeCapture(scheduleId: string) {
     include: { user: true },
   });
 
-  // Mark as attempted
+  // Idempotent: if a previous attempt already succeeded, bail. This makes Bull retries safe.
+  if (schedule.captureSucceeded && schedule.replayId) {
+    return prisma.replay.findUnique({ where: { id: schedule.replayId } });
+  }
+
+  // Mark as attempted (the boolean flips true on every attempt — that's fine,
+  // captureSucceeded above is the real "did we finish" signal).
   await prisma.captureSchedule.update({
     where: { id: scheduleId },
     data: { captureAttempted: true },
@@ -23,7 +29,7 @@ export async function executeCapture(scheduleId: string) {
 
   // Fallback to recently played
   if (!track) {
-    const { start, end } = getSegmentWindow(schedule.segment, schedule.segmentDate);
+    const { start, end } = getSegmentWindow(schedule.segment, schedule.segmentDate, schedule.user.timezone);
     const history = await getRecentlyPlayed(accessToken, start, end);
     if (history.length > 0) {
       const pick = history[Math.floor(Math.random() * history.length)];
@@ -44,7 +50,7 @@ export async function executeCapture(scheduleId: string) {
       userId: schedule.userId,
       segment: schedule.segment,
       segmentDate: schedule.segmentDate,
-      captureTime: new Date(),
+      captureTime: schedule.scheduledCaptureTime,
       captureScheduledTime: schedule.scheduledCaptureTime,
       reRollsAvailable: schedule.reRollsAllocated,
       ...(track

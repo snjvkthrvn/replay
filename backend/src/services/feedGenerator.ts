@@ -86,7 +86,11 @@ export async function generateFeed(
   return { locked: false, userReplay, friendReplays: page, hasMore, nextCursor };
 }
 
-export async function invalidateFeedCache(userId: string) {
+export async function invalidateFeedCache(
+  userId: string,
+  segment?: Segment,
+  segmentDate?: Date,
+) {
   try {
     // Get all friends of this user
     const friendships = await prisma.friendship.findMany({
@@ -100,16 +104,32 @@ export async function invalidateFeedCache(userId: string) {
     const friendIds = friendships.map(f =>
       f.requesterId === userId ? f.addresseeId : f.requesterId
     );
+    if (friendIds.length === 0) return;
 
-    // Delete feed cache keys for all friends
-    const dateStr = new Date().toISOString().split('T')[0];
-    const segments: Segment[] = ['MORNING', 'AFTERNOON', 'NIGHT', 'LATE_NIGHT'];
-    const keys = friendIds.flatMap(fid =>
-      segments.map(seg => `feed:${fid}:${seg}:${dateStr}`)
-    );
+    // Targeted invalidation: only the cache keys whose (segment, segmentDate) actually changed.
+    // Cache keys are keyed by the viewer's *local segment date*, which equals the replay's segmentDate
+    // (segmentDate is the user's local date, stored as UTC midnight — see segments.ts).
+    let keys: string[];
+    if (segment && segmentDate) {
+      const dateStr = segmentDate.toISOString().split('T')[0];
+      keys = friendIds.map((fid) => `feed:${fid}:${segment}:${dateStr}`);
+    } else {
+      // Fallback: invalidate today and yesterday, all segments — covers timezone edges
+      // where the viewer's local date may be ahead of or behind the server's UTC date.
+      const segments: Segment[] = ['MORNING', 'AFTERNOON', 'NIGHT', 'LATE_NIGHT'];
+      const today = new Date();
+      const yesterday = new Date(today);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      const dateStrs = [today, yesterday].map((d) => d.toISOString().split('T')[0]);
+      keys = friendIds.flatMap((fid) =>
+        segments.flatMap((seg) => dateStrs.map((ds) => `feed:${fid}:${seg}:${ds}`))
+      );
+    }
 
     if (keys.length > 0) {
       await redis.del(...keys);
     }
-  } catch {}
+  } catch (err) {
+    console.error('Feed cache invalidation failed:', err);
+  }
 }

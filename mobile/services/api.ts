@@ -1,8 +1,13 @@
 import axios from 'axios';
-import { getAuthToken, setAuthToken, removeAuthToken } from './storage';
+import {
+  clearAuthTokens,
+  getAuthToken,
+  getRefreshToken,
+  setAuthToken,
+  setRefreshToken,
+} from './storage';
 import { router } from 'expo-router';
-
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+import { API_URL } from './config';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -17,18 +22,71 @@ api.interceptors.request.use(async (config) => {
   return config;
 });
 
-// 401 response interceptor — auto-redirect to login on expired/invalid token
+// 401 response interceptor — try token refresh before logging out
+let isRefreshing = false;
+let refreshSubscribers: ((token: string) => void)[] = [];
+let refreshRejecters: ((error: unknown) => void)[] = [];
+
+function onRefreshed(token: string) {
+  refreshSubscribers.forEach(cb => cb(token));
+  refreshSubscribers = [];
+  refreshRejecters = [];
+}
+
+function onRefreshFailed(error: unknown) {
+  refreshRejecters.forEach(cb => cb(error));
+  refreshSubscribers = [];
+  refreshRejecters = [];
+}
+
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const url = error.config?.url || '';
+    const originalRequest = error.config;
+    const url = originalRequest?.url || '';
+
     if (
       error.response?.status === 401 &&
       !url.includes('/auth/login') &&
-      !url.includes('/auth/signup')
+      !url.includes('/auth/signup') &&
+      !url.includes('/auth/refresh') &&
+      !originalRequest._retry
     ) {
-      await removeAuthToken();
-      router.replace('/login');
+      if (isRefreshing) {
+        // Queue this request until refresh completes
+        return new Promise((resolve, reject) => {
+          refreshSubscribers.push((token: string) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(api(originalRequest));
+          });
+          refreshRejecters.push(reject);
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const refreshToken = await getRefreshToken();
+        if (!refreshToken) throw new Error('Missing refresh token');
+
+        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken }, {
+          headers: { 'Content-Type': 'application/json' },
+        });
+        await setAuthToken(data.token);
+        if (data.refreshToken) await setRefreshToken(data.refreshToken);
+        originalRequest.headers.Authorization = `Bearer ${data.token}`;
+        onRefreshed(data.token);
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Refresh failed — log out
+        onRefreshFailed(refreshError);
+        await clearAuthTokens();
+        router.replace('/login');
+        return Promise.reject(error);
+      } finally {
+        isRefreshing = false;
+      }
     }
     return Promise.reject(error);
   }
@@ -38,12 +96,14 @@ api.interceptors.response.use(
 export const signup = async (data: { email: string; username: string; password: string; displayName: string }) => {
   const res = await api.post('/auth/signup', data);
   await setAuthToken(res.data.token);
+  await setRefreshToken(res.data.refreshToken);
   return res.data;
 };
 
 export const login = async (email: string, password: string) => {
   const res = await api.post('/auth/login', { email, password });
   await setAuthToken(res.data.token);
+  await setRefreshToken(res.data.refreshToken);
   return res.data;
 };
 
@@ -104,8 +164,12 @@ export const deleteComment = (id: string) =>
 export const getSpotifyAuthUrl = () =>
   api.post('/auth/spotify').then(r => r.data);
 
-export const spotifyCallback = (code: string) =>
-  api.post('/auth/spotify/callback', { code }).then(r => r.data);
+export const spotifyCallback = async (code: string, state: string) => {
+  const res = await api.post('/auth/spotify/callback', { code, state });
+  if (res.data.token) await setAuthToken(res.data.token);
+  if (res.data.refreshToken) await setRefreshToken(res.data.refreshToken);
+  return res.data;
+};
 
 // Admin (dev testing)
 export const adminGenerateSchedule = () =>

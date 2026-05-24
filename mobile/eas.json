@@ -7,6 +7,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
+        "APP_ENV": "development",
         "EXPO_PUBLIC_API_URL": "http://localhost:3000",
         "EXPO_PUBLIC_WS_URL": "http://localhost:3000"
       }
@@ -14,14 +15,16 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.yourreplaydomain.com",
-        "EXPO_PUBLIC_WS_URL": "https://api.yourreplaydomain.com"
+        "APP_ENV": "preview",
+        "EXPO_PUBLIC_API_URL": "$EXPO_PUBLIC_API_URL",
+        "EXPO_PUBLIC_WS_URL": "$EXPO_PUBLIC_WS_URL"
       }
     },
     "production": {
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://api.yourreplaydomain.com",
-        "EXPO_PUBLIC_WS_URL": "https://api.yourreplaydomain.com"
+        "APP_ENV": "production",
+        "EXPO_PUBLIC_API_URL": "$EXPO_PUBLIC_API_URL",
+        "EXPO_PUBLIC_WS_URL": "$EXPO_PUBLIC_WS_URL"
       }
     }
   },

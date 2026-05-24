@@ -140,6 +140,7 @@ model Replay {
   @@unique([userId, segmentDate, segment])
   @@index([userId, segmentDate, segment])
   @@index([segmentDate, segment, status])
+  @@index([segment, segmentDate, status, captureTime])
   @@index([captureTime])
   @@map("replays")
 }

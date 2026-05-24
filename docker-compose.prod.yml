@@ -1,24 +1,45 @@
-version: '3.8'
-
 # Production docker-compose — use with a proper .env file
 # docker-compose -f docker-compose.prod.yml up -d
+#
+# DNS: point your domain (e.g. api.example.com) at this host.
+# Caddy will auto-provision a Let's Encrypt cert on first request to that hostname.
 
 services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      API_HOSTNAME: ${API_HOSTNAME}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    ports:
-      - "3000:3000"
+    expose:
+      - "3000"
     environment:
+      RUN_MIGRATIONS: "true"
       DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
       SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
       NODE_ENV: production
       PORT: 3000
     depends_on:
@@ -37,19 +58,30 @@ services:
       context: ./backend
       dockerfile: Dockerfile
     restart: unless-stopped
-    command: node dist/src/jobs/captureWorker.js
+    command: ["node", "dist/src/jobs/captureWorker.js"]
     environment:
       DATABASE_URL: ${DATABASE_URL}
-      REDIS_URL: ${REDIS_URL}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       JWT_SECRET: ${JWT_SECRET}
       SPOTIFY_CLIENT_ID: ${SPOTIFY_CLIENT_ID}
       SPOTIFY_CLIENT_SECRET: ${SPOTIFY_CLIENT_SECRET}
+      SPOTIFY_REDIRECT_URI: ${SPOTIFY_REDIRECT_URI}
+      FIREBASE_SERVICE_ACCOUNT_JSON: ${FIREBASE_SERVICE_ACCOUNT_JSON:-}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      WORKER_HEARTBEAT_FILE: /tmp/worker-heartbeat
       NODE_ENV: production
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    healthcheck:
+      # Heartbeat file is touched every 30s by the worker; alert if older than 2 minutes.
+      test: ["CMD-SHELL", "test -f /tmp/worker-heartbeat && test $(( $(date +%s) - $(stat -c %Y /tmp/worker-heartbeat) )) -lt 120"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
 
   postgres:
     image: postgres:15-alpine
@@ -81,3 +113,5 @@ services:
 volumes:
   pgdata:
   redisdata:
+  caddy_data:
+  caddy_config:

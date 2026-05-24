@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth';
 
 export function adminGuard(req: AuthRequest, res: Response, next: NextFunction) {
-  if (process.env.NODE_ENV === 'development' || !process.env.NODE_ENV) {
+  if (process.env.NODE_ENV !== 'production' && process.env.ALLOW_DEV_ADMIN === 'true') {
     return next();
   }
 

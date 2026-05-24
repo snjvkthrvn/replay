@@ -5,6 +5,7 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { reactionSchema } from '../types/schemas';
 import { getIO } from '../websocket';
 import { sendPushNotification } from '../services/pushNotifications';
+import { canViewerInteractWithReplay } from '../services/accessControl';
 
 const router = Router();
 
@@ -20,6 +21,9 @@ router.post('/:replayId', authenticate, asyncHandler(async (req: AuthRequest, re
 
   const replay = await prisma.replay.findUnique({ where: { id: replayId } });
   if (!replay) return res.status(404).json({ error: 'Replay not found', code: 'NOT_FOUND' });
+  if (!(await canViewerInteractWithReplay(userId, replay))) {
+    return res.status(403).json({ error: 'Forbidden', code: 'FORBIDDEN' });
+  }
 
   const existing = await prisma.reaction.findUnique({
     where: { replayId_userId: { replayId, userId } },

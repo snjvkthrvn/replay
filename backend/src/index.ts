@@ -1,10 +1,12 @@
-import * as Sentry from '@sentry/node';
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import dotenv from 'dotenv';
 import { createServer } from 'http';
+import { createServer as createHttpsServer } from 'https';
+import fs from 'fs';
+import path from 'path';
 import { Prisma } from '@prisma/client';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
@@ -16,17 +18,12 @@ import playlistRoutes from './routes/playlists';
 import adminRoutes from './routes/admin';
 import { setupWebSocket } from './websocket';
 import { AppError } from './middleware/AppError';
+import { initSentry, Sentry } from './services/observability';
 
 dotenv.config();
 
 // ─── Sentry (must init before anything else) ─────────────────────────────────
-if (process.env.SENTRY_DSN) {
-  Sentry.init({
-    dsn: process.env.SENTRY_DSN,
-    environment: process.env.NODE_ENV || 'development',
-    tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
-  });
-}
+initSentry();
 
 // ─── Env validation ───────────────────────────────────────────────────────────
 const REQUIRED_ENV = [
@@ -48,6 +45,19 @@ if (process.env.JWT_SECRET === 'replace-with-a-real-secret-in-production') {
 }
 
 // ─── App setup ────────────────────────────────────────────────────────────────
+if (process.env.NODE_ENV === 'production') {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || jwtSecret.length < 32) {
+    console.error('JWT_SECRET must be at least 32 characters in production.');
+    process.exit(1);
+  }
+  const origins = process.env.ALLOWED_ORIGINS || '';
+  if (!origins || /localhost|127\.0\.0\.1|yourreplaydomain/i.test(origins)) {
+    console.error('ALLOWED_ORIGINS must be configured with production origins.');
+    process.exit(1);
+  }
+}
+
 const app = express();
 
 // Security headers
@@ -105,7 +115,7 @@ const searchLimiter = rateLimit({
 app.use('/auth/login', authLimiter);
 app.use('/auth/signup', authLimiter);
 app.use('/users/search', searchLimiter);
-app.use('/api', apiLimiter); // fallback for any /api prefix routes
+app.use(['/users', '/replays', '/friends', '/reactions', '/comments', '/playlists', '/admin'], apiLimiter);
 
 // ─── Health ────────────────────────────────────────────────────────────────────
 app.get('/health', (_req, res) => {
@@ -153,12 +163,21 @@ app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-const httpServer = createServer(app);
+const certPath = path.join(__dirname, '../../localhost.pem');
+const keyPath = path.join(__dirname, '../../localhost-key.pem');
+
+const useHttps = process.env.NODE_ENV === 'development' && fs.existsSync(certPath) && fs.existsSync(keyPath);
+
+const httpServer = useHttps
+  ? createHttpsServer({ cert: fs.readFileSync(certPath), key: fs.readFileSync(keyPath) }, app)
+  : createServer(app);
+
 setupWebSocket(httpServer);
 
 const PORT = process.env.PORT || 3000;
+const protocol = useHttps ? 'https' : 'http';
 httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT} [${process.env.NODE_ENV}]`);
+  console.log(`Server running on ${protocol}://localhost:${PORT} [${process.env.NODE_ENV}]`);
 });
 
 export { app, httpServer };

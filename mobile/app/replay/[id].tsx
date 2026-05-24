@@ -2,7 +2,6 @@ import React from 'react';
 import {
   View,
   Text,
-  Image,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
@@ -11,11 +10,13 @@ import {
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useReplayDetail } from '../../hooks/useReplay';
 import { useAuth } from '../../contexts/AuthContext';
 import ReactionBar from '../../components/ReactionBar';
 import CommentSection from '../../components/CommentSection';
 import { colors, spacing, radius, typography } from '../../constants/theme';
+import { AlbumArt, WaveformBars } from '../../components/ReplayVisuals';
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   CONFIRMED: { label: 'Confirmed', color: colors.confirmed, bg: colors.confirmedBg },
@@ -68,7 +69,59 @@ export default function ReplayDetailScreen() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* User header */}
+      <View style={styles.hero}>
+        <View style={styles.heroColorWash} />
+        <LinearGradient
+          colors={['rgba(0,0,0,0.05)', 'rgba(8,8,10,0.4)', colors.bg]}
+          locations={[0, 0.48, 1]}
+          style={StyleSheet.absoluteFill}
+        />
+
+        <View style={styles.heroActions}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={16} color={colors.text} />
+            <Text style={styles.backButtonText}>Back</Text>
+          </TouchableOpacity>
+          {replay.externalUrl && (
+            <TouchableOpacity
+              style={styles.openSpotify}
+              onPress={() => Linking.openURL(replay.externalUrl)}
+            >
+              <Ionicons name="musical-notes" size={15} color={colors.spotify} />
+              <Text style={styles.openSpotifyText}>Open</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
+        <View style={styles.heroContent}>
+          <AlbumArt
+            url={replay.albumArtUrl}
+            seed={`${replay.id}-${replay.trackName}`}
+            size={86}
+            borderRadius={radius.lg}
+            style={styles.heroArt}
+          />
+          <View style={styles.heroCopy}>
+            {replay.user && (
+              <Text style={styles.userName} numberOfLines={1}>
+                {replay.user.displayName}
+              </Text>
+            )}
+            <Text style={styles.trackName} numberOfLines={2}>
+              {replay.trackName}
+            </Text>
+            <Text style={styles.artistName} numberOfLines={1}>
+              {replay.artistName}
+            </Text>
+            {replay.albumName && (
+              <Text style={styles.albumName} numberOfLines={1}>
+                {replay.albumName}
+              </Text>
+            )}
+          </View>
+        </View>
+      </View>
+
       {replay.user && (
         <View style={styles.userHeader}>
           <View style={styles.userAvatar}>
@@ -77,41 +130,13 @@ export default function ReplayDetailScreen() {
             </Text>
           </View>
           <View>
-            <Text style={styles.userName}>{replay.user.displayName}</Text>
             <Text style={styles.userHandle}>@{replay.user.username}</Text>
           </View>
-          {replay.externalUrl && (
-            <TouchableOpacity
-              style={styles.openSpotify}
-              onPress={() => Linking.openURL(replay.externalUrl)}
-            >
-              <Ionicons name="musical-notes" size={16} color={colors.spotify} />
-              <Text style={styles.openSpotifyText}>Open</Text>
-            </TouchableOpacity>
-          )}
+          <View style={styles.detailWave}>
+            <WaveformBars color={colors.accent} active={!!myReaction} count={9} height={16} />
+          </View>
         </View>
       )}
-
-      {/* Album art */}
-      <View style={styles.artContainer}>
-        <View style={styles.artGlow} />
-        {replay.albumArtUrl ? (
-          <Image source={{ uri: replay.albumArtUrl }} style={styles.albumArt} />
-        ) : (
-          <View style={[styles.albumArt, styles.albumArtPlaceholder]}>
-            <Ionicons name="musical-notes" size={64} color={colors.accent} />
-          </View>
-        )}
-      </View>
-
-      {/* Track info */}
-      <View style={styles.trackSection}>
-        <Text style={styles.trackName}>{replay.trackName}</Text>
-        <Text style={styles.artistName}>{replay.artistName}</Text>
-        {replay.albumName && (
-          <Text style={styles.albumName}>{replay.albumName}</Text>
-        )}
-      </View>
 
       {/* Meta row */}
       <View style={styles.metaRow}>
@@ -142,10 +167,9 @@ export default function ReplayDetailScreen() {
         )}
       </View>
 
-      {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Reaction bar */}
+      <Text style={styles.sectionTitle}>REACTIONS</Text>
       <ReactionBar replayId={replay.id} activeReaction={myReaction} />
 
       {/* Reaction summary */}
@@ -167,10 +191,8 @@ export default function ReplayDetailScreen() {
         </View>
       )}
 
-      {/* Divider */}
       <View style={styles.divider} />
 
-      {/* Comments */}
       <CommentSection
         replayId={replay.id}
         comments={replay.comments || []}
@@ -219,6 +241,60 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
 
+  hero: {
+    height: 270,
+    overflow: 'hidden',
+    position: 'relative',
+    justifyContent: 'flex-end',
+    paddingHorizontal: spacing.xl,
+    paddingBottom: spacing.xl,
+  },
+  heroColorWash: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: colors.accentGlowStrong,
+  },
+  heroActions: {
+    position: 'absolute',
+    top: spacing.lg,
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    zIndex: 2,
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: 'rgba(0,0,0,0.42)',
+    borderWidth: 1,
+    borderColor: colors.cardBorder,
+    paddingVertical: 7,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.full,
+  },
+  backButtonText: {
+    color: colors.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  heroContent: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: spacing.lg,
+  },
+  heroArt: {
+    shadowColor: colors.accent,
+    shadowOpacity: 0.35,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  heroCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+
   // User header
   userHeader: {
     flexDirection: 'row',
@@ -243,7 +319,8 @@ const styles = StyleSheet.create({
   },
   userName: {
     ...typography.bodyBold,
-    fontSize: 14,
+    color: colors.accent,
+    marginBottom: 3,
   },
   userHandle: {
     fontSize: 12,
@@ -251,7 +328,6 @@ const styles = StyleSheet.create({
     marginTop: 1,
   },
   openSpotify: {
-    marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.xs,
@@ -267,55 +343,23 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 13,
   },
-
-  // Album art
-  artContainer: {
-    alignItems: 'center',
-    paddingVertical: spacing.xxl,
-    position: 'relative',
-  },
-  artGlow: {
-    position: 'absolute',
-    top: 30,
-    width: 260,
-    height: 260,
-    borderRadius: 130,
-    backgroundColor: colors.accentGlow,
-  },
-  albumArt: {
-    width: 260,
-    height: 260,
-    borderRadius: radius.xl,
-    borderWidth: 1,
-    borderColor: colors.cardBorder,
-  },
-  albumArtPlaceholder: {
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  // Track info
-  trackSection: {
-    paddingHorizontal: spacing.lg,
-    alignItems: 'center',
-    marginBottom: spacing.lg,
+  detailWave: {
+    marginLeft: 'auto',
   },
   trackName: {
     ...typography.h1,
-    textAlign: 'center',
-    marginBottom: spacing.sm,
+    fontSize: 24,
+    textAlign: 'left',
+    marginBottom: spacing.xs,
   },
   artistName: {
     ...typography.body,
     color: colors.textSecondary,
-    textAlign: 'center',
   },
   albumName: {
     ...typography.caption,
     color: colors.textTertiary,
     marginTop: spacing.xs,
-    textAlign: 'center',
   },
 
   // Meta
@@ -374,6 +418,12 @@ const styles = StyleSheet.create({
     backgroundColor: colors.divider,
     marginVertical: spacing.sm,
     marginHorizontal: spacing.lg,
+  },
+  sectionTitle: {
+    ...typography.micro,
+    color: colors.textTertiary,
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.sm,
   },
 
   // Reaction summary

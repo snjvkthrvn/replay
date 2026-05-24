@@ -12,8 +12,13 @@ export const loginSchema = z.object({
   password: z.string().min(1),
 });
 
+export const refreshSchema = z.object({
+  refreshToken: z.string().min(1),
+});
+
 export const spotifyCallbackSchema = z.object({
   code: z.string().min(1),
+  state: z.string().min(1),
 });
 
 export const deviceTokenSchema = z.object({
@@ -44,4 +49,16 @@ export const reactionSchema = z.object({
 
 export const commentSchema = z.object({
   text: z.string().min(1).max(500),
+});
+
+export const playlistCreateSchema = z.object({
+  name: z.string().min(1).max(200),
+  description: z.string().max(1000).optional(),
+  timeRangeStart: z.coerce.date(),
+  timeRangeEnd: z.coerce.date(),
+  segmentsIncluded: z.array(z.enum(['MORNING', 'AFTERNOON', 'NIGHT', 'LATE_NIGHT'])).optional(),
+  friendIdsIncluded: z.array(z.string().uuid()).optional(),
+}).refine((data) => data.timeRangeStart <= data.timeRangeEnd, {
+  message: 'timeRangeStart must be before timeRangeEnd',
+  path: ['timeRangeEnd'],
 });

@@ -1,7 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { getAuthToken } from './storage';
-
-const WS_URL = process.env.EXPO_PUBLIC_WS_URL || 'http://localhost:3000';
+import { WS_URL } from './config';
 
 let socket: Socket | null = null;
 
@@ -12,6 +11,7 @@ export async function connectSocket() {
   socket = io(WS_URL, {
     auth: { token },
     transports: ['websocket'],
+    secure: WS_URL.startsWith('https') || WS_URL.startsWith('wss'),
   });
 
   socket.on('connect', () => {

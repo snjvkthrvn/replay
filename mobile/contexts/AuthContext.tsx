@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
-import { getAuthToken, removeAuthToken } from '../services/storage';
+import { clearAuthTokens, getAuthToken } from '../services/storage';
 import { login as apiLogin, signup as apiSignup, getMe } from '../services/api';
 import { connectSocket, disconnectSocket } from '../services/socket';
 
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await connectSocket();
         }
       } catch {
-        await removeAuthToken();
+        await clearAuthTokens();
       } finally {
         setIsLoading(false);
       }
@@ -55,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const logout = useCallback(async () => {
-    await removeAuthToken();
+    await clearAuthTokens();
     disconnectSocket();
     setUser(null);
   }, []);

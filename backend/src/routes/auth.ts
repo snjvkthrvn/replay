@@ -1,9 +1,22 @@
 import { Router } from 'express';
 import prisma from '../services/prisma';
-import { hashPassword, comparePassword, generateToken, verifyToken } from '../services/auth';
+import {
+  hashPassword,
+  comparePassword,
+  generateToken,
+  generateRefreshToken,
+  verifyRefreshToken,
+} from '../services/auth';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { asyncHandler } from '../middleware/asyncHandler';
-import { signupSchema, loginSchema, spotifyCallbackSchema, deviceTokenSchema } from '../types/schemas';
+import {
+  signupSchema,
+  loginSchema,
+  refreshSchema,
+  spotifyCallbackSchema,
+  deviceTokenSchema,
+} from '../types/schemas';
+import { createSpotifyOAuthState, consumeSpotifyOAuthState } from '../services/authState';
 import { getAuthUrl, exchangeCode, getUserProfile } from '../services/spotify';
 
 const router = Router();
@@ -40,6 +53,7 @@ router.post('/signup', asyncHandler(async (req, res) => {
   res.status(201).json({
     user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName },
     token: generateToken(user.id, user.username),
+    refreshToken: generateRefreshToken(user.id, user.username),
   });
 }));
 
@@ -60,18 +74,42 @@ router.post('/login', asyncHandler(async (req, res) => {
   res.json({
     user: { id: user.id, email: user.email, username: user.username, displayName: user.displayName },
     token: generateToken(user.id, user.username),
+    refreshToken: generateRefreshToken(user.id, user.username),
   });
 }));
 
 // POST /auth/refresh
-router.post('/refresh', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const token = generateToken(req.user!.userId, req.user!.username);
-  res.json({ token });
+router.post('/refresh', asyncHandler(async (req, res) => {
+  const parsed = refreshSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Missing refresh token', code: 'VALIDATION_ERROR' });
+  }
+
+  let payload: { userId: string; username: string };
+  try {
+    payload = verifyRefreshToken(parsed.data.refreshToken);
+  } catch {
+    return res.status(401).json({ error: 'Invalid refresh token', code: 'UNAUTHORIZED' });
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: payload.userId },
+    select: { id: true, username: true },
+  });
+  if (!user) {
+    return res.status(401).json({ error: 'Invalid refresh token', code: 'UNAUTHORIZED' });
+  }
+
+  res.json({
+    token: generateToken(user.id, user.username),
+    refreshToken: generateRefreshToken(user.id, user.username),
+  });
 }));
 
 // POST /auth/spotify - initiate OAuth
 router.post('/spotify', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  res.json({ authUrl: getAuthUrl(req.user!.userId) });
+  const state = await createSpotifyOAuthState(req.user!.userId);
+  res.json({ authUrl: getAuthUrl(state) });
 }));
 
 // POST /auth/spotify/callback - complete OAuth
@@ -79,6 +117,11 @@ router.post('/spotify/callback', authenticate, asyncHandler(async (req: AuthRequ
   const parsed = spotifyCallbackSchema.safeParse(req.body);
   if (!parsed.success) {
     return res.status(400).json({ error: 'Missing code', code: 'VALIDATION_ERROR' });
+  }
+
+  const stateUserId = await consumeSpotifyOAuthState(parsed.data.state);
+  if (stateUserId !== req.user!.userId) {
+    return res.status(400).json({ error: 'Invalid OAuth state', code: 'VALIDATION_ERROR' });
   }
 
   const tokens = await exchangeCode(parsed.data.code);
@@ -97,6 +140,7 @@ router.post('/spotify/callback', authenticate, asyncHandler(async (req: AuthRequ
   res.json({
     user: { id: user.id, username: user.username, musicService: user.musicService, musicServiceUserId: user.musicServiceUserId },
     token: generateToken(user.id, user.username),
+    refreshToken: generateRefreshToken(user.id, user.username),
   });
 }));
 

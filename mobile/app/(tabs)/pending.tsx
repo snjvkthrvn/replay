@@ -1,14 +1,29 @@
-import React from 'react';
-import { View, Text, Image, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { Animated, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { usePendingReplay, useConfirmReplay, useRerollReplay } from '../../hooks/useReplay';
 import { colors, spacing, radius, typography, gradients } from '../../constants/theme';
+import { AlbumArt, WaveformBars } from '../../components/ReplayVisuals';
 
 export default function PendingScreen() {
   const { data, isLoading, error } = usePendingReplay();
   const confirm = useConfirmReplay();
   const reroll = useRerollReplay();
+  const spin = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    spin.setValue(0);
+    const loop = Animated.loop(
+      Animated.timing(spin, {
+        toValue: 1,
+        duration: confirm.isPending ? 460 : 6200,
+        useNativeDriver: true,
+      })
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [confirm.isPending, spin]);
 
   if (isLoading) {
     return (
@@ -55,13 +70,42 @@ export default function PendingScreen() {
         {/* Album art with glow */}
         <View style={styles.artContainer}>
           <View style={styles.artGlow} />
-          {replay.albumArtUrl ? (
-            <Image source={{ uri: replay.albumArtUrl }} style={styles.albumArt} />
-          ) : (
-            <View style={[styles.albumArt, styles.albumArtPlaceholder]}>
-              <Ionicons name="musical-notes" size={56} color={colors.accent} />
+          {confirm.isPending && <View style={styles.confirmBloom} />}
+          <Animated.View
+            style={[
+              styles.vinyl,
+              {
+                transform: [
+                  {
+                    rotate: spin.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg'],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <AlbumArt
+              url={replay.albumArtUrl}
+              seed={`${replay.id}-${replay.trackName}`}
+              size={204}
+              circular
+              style={styles.albumArt}
+            />
+            {[82, 108, 136, 166].map((diameter) => (
+              <View
+                key={diameter}
+                style={[
+                  styles.vinylGroove,
+                  { width: diameter, height: diameter, borderRadius: diameter / 2 },
+                ]}
+              />
+            ))}
+            <View style={styles.vinylLabel}>
+              <View style={styles.vinylPin} />
             </View>
-          )}
+          </Animated.View>
         </View>
 
         {/* Track info */}
@@ -104,7 +148,10 @@ export default function PendingScreen() {
               style={styles.confirmButton}
             >
               {confirm.isPending ? (
-                <ActivityIndicator color={colors.bg} />
+                <>
+                  <Ionicons name="sparkles" size={18} color={colors.bg} />
+                  <Text style={styles.confirmText}>Locking in...</Text>
+                </>
               ) : (
                 <>
                   <Ionicons name="checkmark-circle" size={20} color={colors.bg} />
@@ -125,7 +172,7 @@ export default function PendingScreen() {
                 <ActivityIndicator color={colors.accent} size="small" />
               ) : (
                 <>
-                  <Ionicons name="shuffle" size={18} color={colors.accent} />
+                  <Ionicons name="refresh" size={18} color={colors.accent} />
                   <Text style={styles.rerollText}>Re-roll</Text>
                 </>
               )}
@@ -150,6 +197,11 @@ export default function PendingScreen() {
             })}
           </Text>
         )}
+
+        <View style={styles.footerWave}>
+          <WaveformBars color={colors.accent} active count={18} height={18} />
+          <Text style={styles.footerWaveText}>CAPTURES 4x DAILY</Text>
+        </View>
       </View>
     </View>
   );
@@ -228,24 +280,58 @@ const styles = StyleSheet.create({
   },
   artGlow: {
     position: 'absolute',
-    top: 20,
-    left: 20,
-    right: 20,
-    bottom: -10,
-    borderRadius: 140,
+    top: 10,
+    left: 5,
+    right: 5,
+    bottom: 0,
+    borderRadius: 150,
     backgroundColor: colors.accentGlowStrong,
   },
-  albumArt: {
+  confirmBloom: {
+    position: 'absolute',
+    top: -18,
+    left: -18,
+    right: -18,
+    bottom: -18,
+    borderRadius: 150,
+    borderWidth: 3,
+    borderColor: colors.accent,
+    opacity: 0.4,
+  },
+  vinyl: {
     width: 220,
     height: 220,
     borderRadius: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
     borderWidth: 3,
     borderColor: colors.cardBorder,
   },
-  albumArtPlaceholder: {
-    backgroundColor: colors.surface,
+  albumArt: {
+    opacity: 0.92,
+  },
+  vinylGroove: {
+    position: 'absolute',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.28)',
+  },
+  vinylLabel: {
+    position: 'absolute',
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.cardBorder,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  vinylPin: {
+    width: 9,
+    height: 9,
+    borderRadius: 5,
+    backgroundColor: colors.accent,
   },
 
   // Track info
@@ -338,5 +424,17 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: colors.textTertiary,
     marginTop: spacing.xxl,
+  },
+  footerWave: {
+    alignItems: 'center',
+    marginTop: spacing.xxxl,
+    opacity: 0.72,
+  },
+  footerWaveText: {
+    marginTop: spacing.sm,
+    color: colors.textTertiary,
+    fontSize: 10,
+    fontWeight: '800',
+    letterSpacing: 1,
   },
 });

@@ -1,52 +1,19 @@
 import cron from 'node-cron';
-import { processReveal, expirePendingReplays } from '../services/revealService';
+import { expireDuePendingReplays, processDueReveals } from '../services/revealService';
+import { withLeaderLock } from '../services/leaderLock';
 
-// MORNING reveal at noon
-cron.schedule('0 12 * * *', async () => {
-  console.log('Processing MORNING reveal...');
-  await processReveal('MORNING', new Date());
+cron.schedule('*/15 * * * *', async () => {
+  const ran = await withLeaderLock('reveal-worker-quarter-hour', async () => {
+    const now = new Date();
+    const revealed = await processDueReveals(now);
+    const expired = await expireDuePendingReplays(now);
+    if (revealed || expired) {
+      console.log(`Processed due reveal work: ${revealed} reveal users, ${expired} expiry users`);
+    }
+  }, 10 * 60); // 10-minute lock; shorter than 15-min interval to avoid blocking next tick
+  if (ran === null) {
+    console.log('Reveal processing skipped (another worker holds the lock)');
+  }
 });
 
-// MORNING grace period expiry at 1pm
-cron.schedule('0 13 * * *', async () => {
-  console.log('Expiring MORNING pending replays...');
-  await expirePendingReplays('MORNING', new Date());
-});
-
-// AFTERNOON reveal at 7pm
-cron.schedule('0 19 * * *', async () => {
-  await processReveal('AFTERNOON', new Date());
-});
-
-// AFTERNOON grace expiry at 8pm
-cron.schedule('0 20 * * *', async () => {
-  await expirePendingReplays('AFTERNOON', new Date());
-});
-
-// NIGHT reveal at 11pm
-cron.schedule('0 23 * * *', async () => {
-  await processReveal('NIGHT', new Date());
-});
-
-// NIGHT grace expiry at midnight
-cron.schedule('0 0 * * *', async () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  await expirePendingReplays('NIGHT', yesterday);
-});
-
-// LATE_NIGHT reveal at 3am
-cron.schedule('0 3 * * *', async () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  await processReveal('LATE_NIGHT', yesterday);
-});
-
-// LATE_NIGHT grace expiry at 4am
-cron.schedule('0 4 * * *', async () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  await expirePendingReplays('LATE_NIGHT', yesterday);
-});
-
-console.log('Reveal worker crons registered');
+console.log('Reveal worker cron registered (timezone-aware every 15 minutes, leader-locked)');

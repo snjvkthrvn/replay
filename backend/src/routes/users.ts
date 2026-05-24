@@ -66,7 +66,7 @@ router.patch('/me', authenticate, asyncHandler(async (req: AuthRequest, res) => 
 
 // GET /users/search?q=alice
 router.get('/search', authenticate, asyncHandler(async (req: AuthRequest, res) => {
-  const q = req.query.q as string;
+  const q = (req.query.q as string || '').slice(0, 50);
   if (!q || q.length < 1) {
     return res.status(400).json({ error: 'Query parameter q is required', code: 'VALIDATION_ERROR' });
   }
