@@ -3,6 +3,8 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
+
 COPY package*.json ./
 RUN npm ci --ignore-scripts
 
@@ -24,6 +26,7 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
+RUN apk add --no-cache openssl
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 # Copy compiled output and prod deps only

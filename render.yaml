@@ -32,7 +32,7 @@ services:
       - key: SPOTIFY_REDIRECT_URI
         value: replay://
       - key: ALLOWED_ORIGINS
-        value: https://replay-api.onrender.com,replay://
+        value: https://replay-api-ic3h.onrender.com,replay://
 
   - type: keyvalue
     name: replay-redis

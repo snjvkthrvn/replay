@@ -2,17 +2,27 @@ import axios from 'axios';
 import prisma from './prisma';
 import redis from './redis';
 
-const CLIENT_ID = process.env.SPOTIFY_CLIENT_ID!;
-const CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET!;
-const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI!;
-const AUTH_HEADER = `Basic ${Buffer.from(`${CLIENT_ID}:${CLIENT_SECRET}`).toString('base64')}`;
-
 const SCOPES = [
   'user-read-currently-playing',
   'user-read-recently-played',
   'playlist-modify-public',
   'playlist-modify-private',
 ];
+
+function spotifyConfig() {
+  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const clientSecret = process.env.SPOTIFY_CLIENT_SECRET;
+  const redirectUri = process.env.SPOTIFY_REDIRECT_URI;
+  if (!clientId || !clientSecret || !redirectUri) {
+    throw new Error('Spotify OAuth is not configured');
+  }
+
+  return {
+    clientId,
+    redirectUri,
+    authHeader: `Basic ${Buffer.from(`${clientId}:${clientSecret}`).toString('base64')}`,
+  };
+}
 
 // Two-level lock to prevent token-refresh races:
 //   1. Process-local Map dedupes concurrent calls within one process.
@@ -23,10 +33,11 @@ const REFRESH_WAIT_MAX_MS = 10_000;
 const REFRESH_WAIT_INTERVAL_MS = 100;
 
 export function getAuthUrl(state: string): string {
+  const { clientId, redirectUri } = spotifyConfig();
   const params = new URLSearchParams({
-    client_id: CLIENT_ID,
+    client_id: clientId,
     response_type: 'code',
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     scope: SCOPES.join(' '),
     state,
   });
@@ -34,19 +45,21 @@ export function getAuthUrl(state: string): string {
 }
 
 export async function exchangeCode(code: string) {
+  const { redirectUri, authHeader } = spotifyConfig();
   const { data } = await axios.post(
     'https://accounts.spotify.com/api/token',
-    new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: REDIRECT_URI }),
-    { headers: { Authorization: AUTH_HEADER, 'Content-Type': 'application/x-www-form-urlencoded' } },
+    new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri: redirectUri }),
+    { headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' } },
   );
   return { accessToken: data.access_token, refreshToken: data.refresh_token, expiresIn: data.expires_in };
 }
 
 export async function refreshAccessToken(refreshToken: string) {
+  const { authHeader } = spotifyConfig();
   const { data } = await axios.post(
     'https://accounts.spotify.com/api/token',
     new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken }),
-    { headers: { Authorization: AUTH_HEADER, 'Content-Type': 'application/x-www-form-urlencoded' } },
+    { headers: { Authorization: authHeader, 'Content-Type': 'application/x-www-form-urlencoded' } },
   );
   return { accessToken: data.access_token, expiresIn: data.expires_in };
 }

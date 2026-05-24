@@ -30,9 +30,6 @@ const REQUIRED_ENV = [
   'DATABASE_URL',
   'REDIS_URL',
   'JWT_SECRET',
-  'SPOTIFY_CLIENT_ID',
-  'SPOTIFY_CLIENT_SECRET',
-  'SPOTIFY_REDIRECT_URI',
 ];
 const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
 if (missing.length > 0) {
